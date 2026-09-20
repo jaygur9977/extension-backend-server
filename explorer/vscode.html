@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Code Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Segoe UI', -apple-system, system-ui, sans-serif;
+    background: #1e1e1e;
+    color: #cccccc;
+    font-size: 13px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ============ TITLE BAR ============ */
+  .titlebar {
+    height: 32px;
+    background: #323233;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    border-bottom: 1px solid #252526;
+    font-size: 12px;
+    color: #cccccc;
+    flex-shrink: 0;
+  }
+  .titlebar .brand {
+    font-weight: 600;
+    color: #4fc3f7;
+    margin-right: 16px;
+  }
+  .titlebar .folder-name {
+    color: #969696;
+  }
+
+  /* ============ TOOLBAR ============ */
+  .toolbar {
+    height: 42px;
+    background: #252526;
+    border-bottom: 1px solid #3c3c3c;
+    display: flex;
+    align-items: center;
+    padding: 0 10px;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .toolbar button {
+    background: #0e639c;
+    color: #ffffff;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s;
+  }
+  .toolbar button:hover:not(:disabled) { background: #1177bb; }
+  .toolbar button:disabled {
+    background: #3c3c3c;
+    color: #6a6a6a;
+    cursor: not-allowed;
+  }
+  .toolbar button.secondary {
+    background: #3c3c3c;
+    color: #cccccc;
+  }
+  .toolbar button.secondary:hover:not(:disabled) { background: #4a4a4a; }
+  .toolbar .spacer { flex: 1; }
+  .toolbar .status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #6a6a6a; margin-right: 6px;
+  }
+  .toolbar .status-dot.active { background: #4caf50; }
+
+  /* ============ MAIN LAYOUT ============ */
+  .main {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* ============ SIDEBAR ============ */
+  .sidebar {
+    width: 280px;
+    background: #252526;
+    border-right: 1px solid #3c3c3c;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .sidebar-header {
+    padding: 8px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #969696;
+    border-bottom: 1px solid #3c3c3c;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .sidebar-header .actions { display: flex; gap: 4px; }
+  .sidebar-header button {
+    background: transparent;
+    color: #cccccc;
+    border: none;
+    padding: 2px 6px;
+    cursor: pointer;
+    border-radius: 3px;
+    font-size: 14px;
+  }
+  .sidebar-header button:hover { background: #3c3c3c; }
+
+  .tree {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px 0;
+  }
+  .tree::-webkit-scrollbar { width: 10px; }
+  .tree::-webkit-scrollbar-thumb { background: #424242; border-radius: 5px; }
+  .tree::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
+
+  .node {
+    display: flex;
+    align-items: center;
+    padding: 3px 8px 3px 0;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    user-select: none;
+    position: relative;
+  }
+  .node:hover { background: #2a2d2e; }
+  .node.selected { background: #094771; }
+  .node .indent { flex-shrink: 0; }
+  .node .chevron {
+    width: 16px;
+    text-align: center;
+    color: #cccccc;
+    font-size: 10px;
+    flex-shrink: 0;
+    transition: transform 0.1s;
+  }
+  .node.expanded .chevron { transform: rotate(90deg); }
+  .node .icon {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 4px;
+    font-size: 11px;
+    flex-shrink: 0;
+  }
+  .node .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+  }
+
+  .icon.folder {
+    color: #dcb67a;
+  }
+  .icon.folder-open {
+    color: #dcb67a;
+  }
+  .icon-file {
+    font-weight: bold;
+    font-family: monospace;
+    font-size: 9px;
+  }
+
+  /* File icon colors by extension */
+  .ext-js   { color: #f7df1e; }
+  .ext-ts   { color: #3178c6; }
+  .ext-html { color: #e34c26; }
+  .ext-css  { color: #563d7c; }
+  .ext-json { color: #f1e05a; }
+  .ext-md   { color: #4fc3f7; }
+  .ext-py   { color: #3572a5; }
+  .ext-txt  { color: #969696; }
+  .ext-other{ color: #969696; }
+
+  .empty-state {
+    padding: 40px 20px;
+    text-align: center;
+    color: #6a6a6a;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .empty-state button {
+    margin-top: 16px;
+    background: #0e639c;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  /* ============ EDITOR ============ */
+  .editor {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: #1e1e1e;
+    overflow: hidden;
+  }
+  .tabs {
+    height: 35px;
+    background: #252526;
+    display: flex;
+    border-bottom: 1px solid #3c3c3c;
+    overflow-x: auto;
+    flex-shrink: 0;
+  }
+  .tabs::-webkit-scrollbar { height: 3px; }
+  .tabs::-webkit-scrollbar-thumb { background: #4f4f4f; }
+  .tab {
+    padding: 0 12px;
+    height: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: #2d2d2d;
+    border-right: 1px solid #252526;
+    color: #969696;
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    position: relative;
+  }
+  .tab.active {
+    background: #1e1e1e;
+    color: #ffffff;
+    border-top: 1px solid #0e639c;
+  }
+  .tab .close {
+    color: #969696;
+    font-size: 14px;
+    padding: 0 2px;
+    border-radius: 3px;
+  }
+  .tab .close:hover { background: #3c3c3c; color: #fff; }
+  .tab .modified-dot {
+    width: 8px; height: 8px;
+    background: #ffffff;
+    border-radius: 50%;
+    display: none;
+  }
+  .tab.modified .modified-dot { display: block; }
+  .tab.modified .close { display: none; }
+  .tab.modified:hover .modified-dot { display: none; }
+  .tab.modified:hover .close { display: block; }
+
+  .editor-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+  }
+  .line-numbers {
+    width: 50px;
+    background: #1e1e1e;
+    color: #858585;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 20px;
+    padding: 10px 8px 10px 0;
+    text-align: right;
+    overflow: hidden;
+    border-right: 1px solid #252526;
+    user-select: none;
+    flex-shrink: 0;
+  }
+  .code-editor {
+    flex: 1;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    border: none;
+    outline: none;
+    resize: none;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 20px;
+    padding: 10px;
+    overflow: auto;
+    white-space: pre;
+    tab-size: 2;
+  }
+  .code-editor::-webkit-scrollbar { width: 12px; height: 12px; }
+  .code-editor::-webkit-scrollbar-thumb { background: #424242; border-radius: 6px; }
+  .code-editor::-webkit-scrollbar-thumb:hover { background: #4f4f4f; }
+
+  .welcome {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #6a6a6a;
+    text-align: center;
+    font-size: 14px;
+    line-height: 1.8;
+  }
+  .welcome h2 {
+    color: #cccccc;
+    font-weight: 300;
+    font-size: 26px;
+    margin-bottom: 8px;
+  }
+  .welcome .shortcuts {
+    margin-top: 20px;
+    font-size: 12px;
+    color: #858585;
+  }
+  .welcome kbd {
+    background: #3c3c3c;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 11px;
+    color: #d4d4d4;
+  }
+
+  /* ============ STATUS BAR ============ */
+  .statusbar {
+    height: 22px;
+    background: #007acc;
+    color: #ffffff;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .statusbar .spacer { flex: 1; }
+  .statusbar-item { display: flex; align-items: center; gap: 4px; }
+
+  /* ============ MODAL ============ */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .modal-overlay.active { display: flex; }
+  .modal {
+    background: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 6px;
+    padding: 20px;
+    width: 380px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+  }
+  .modal h3 {
+    color: #ffffff;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 12px;
+  }
+  .modal input {
+    width: 100%;
+    padding: 8px 10px;
+    background: #3c3c3c;
+    border: 1px solid #3c3c3c;
+    color: #ffffff;
+    border-radius: 4px;
+    font-size: 13px;
+    outline: none;
+    margin-bottom: 16px;
+  }
+  .modal input:focus { border-color: #0e639c; }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .modal-actions button {
+    padding: 6px 14px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .modal-actions .cancel {
+    background: #3c3c3c;
+    color: #cccccc;
+  }
+  .modal-actions .confirm {
+    background: #0e639c;
+    color: #ffffff;
+  }
+  .modal-actions .confirm:hover { background: #1177bb; }
+
+  /* Toast notifications */
+  .toast {
+    position: fixed;
+    bottom: 40px;
+    right: 20px;
+    background: #2d2d2d;
+    color: #ffffff;
+    padding: 10px 16px;
+    border-radius: 4px;
+    border-left: 3px solid #0e639c;
+    font-size: 12px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    transform: translateX(400px);
+    transition: transform 0.3s ease;
+    z-index: 2000;
+  }
+  .toast.show { transform: translateX(0); }
+  .toast.error { border-left-color: #f44336; }
+  .toast.success { border-left-color: #4caf50; }
+</style>
+</head>
+<body>
+
+<!-- ============ TITLE BAR ============ -->
+<div class="titlebar">
+  <span class="brand">📁 Code Explorer</span>
+  <span class="folder-name" id="folderName">No folder opened</span>
+</div>
+
+<!-- ============ TOOLBAR ============ -->
+<div class="toolbar">
+  <button id="btnOpenFolder">📂 Open Folder</button>
+  <button id="btnNewFile" class="secondary" disabled>📄 New File</button>
+  <button id="btnNewFolder" class="secondary" disabled>📁 New Folder</button>
+  <button id="btnRefresh" class="secondary" disabled>🔄 Refresh</button>
+  <div class="spacer"></div>
+  <button id="btnSave" class="secondary" disabled>💾 Save</button>
+</div>
+
+<!-- ============ MAIN ============ -->
+<div class="main">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <span>Explorer</span>
+      <div class="actions">
+        <button id="btnCollapseAll" title="Collapse All">⇕</button>
+      </div>
+    </div>
+    <div class="tree" id="tree">
+      <div class="empty-state">
+        <div style="font-size:42px; margin-bottom:12px;">📁</div>
+        <div>No folder opened yet</div>
+        <div style="margin-top:6px; font-size:11px;">
+          Click "Open Folder" to choose a directory from your computer.
+        </div>
+        <button id="emptyOpenBtn">Open Folder</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDITOR -->
+  <div class="editor">
+    <div class="tabs" id="tabs"></div>
+    <div class="editor-area" id="editorArea">
+      <div class="welcome" id="welcome">
+        <h2>Code Explorer</h2>
+        <div>Open a folder to browse and edit files</div>
+        <div class="shortcuts">
+          <div><kbd>Ctrl</kbd> + <kbd>S</kbd> — Save file</div>
+          <div><kbd>Ctrl</kbd> + <kbd>N</kbd> — New file</div>
+          <div><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> — New folder</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ============ STATUS BAR ============ -->
+<div class="statusbar">
+  <div class="statusbar-item">
+    <span class="status-dot" id="statusDot"></span>
+    <span id="statusText">Ready</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="statusbar-item" id="statusPath"></div>
+  <div class="statusbar-item" id="statusCursor">Ln 1, Col 1</div>
+  <div class="statusbar-item" id="statusLang">Plain Text</div>
+</div>
+
+<!-- ============ MODAL ============ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <h3 id="modalTitle">New File</h3>
+    <input 
+  type="text" 
+  id="modalInput" 
+  name="filename"
+  aria-label="filename input"
+  placeholder="Enter name..." 
+  autocomplete="off"
+  data-agent-id="modal-filename-input">
+    <div class="modal-actions">
+      
+      <button class="cancel" id="modalCancel">Cancel</button>
+      <button class="confirm" id="modalConfirm" aria-label="Create button" data-agent-id="create-button">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ TOAST ============ -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+const state = {
+  rootHandle: null,
+  expandedFolders: new Set(),
+  openTabs: [],           // [{ path, name, content, modified, handle }]
+  activeTab: null,
+  modalMode: null,        // 'newFile' | 'newFolder'
+  modalTargetDir: null,   // directory handle where new item goes
+};
+
+
+
+// ============================================================
+//  🤖 AGENT API — Direct access for extension
+//  No DOM clicking needed
+// ============================================================
+window.__agentAPI = {
+
+  // ---------- STATE ----------
+  getState: () => ({
+    success: true,
+    hasRootFolder: !!state.rootHandle,
+    rootFolderName: state.rootHandle?.name || null,
+    openFiles: state.openTabs.map(t => ({
+      path: t.path, name: t.name, modified: t.modified
+    })),
+    activeFile: state.activeTab ? {
+      path: state.activeTab.path,
+      name: state.activeTab.name,
+      content: state.activeTab.content,
+      modified: state.activeTab.modified
+    } : null
+  }),
+
+  // ---------- LIST FILES ----------
+  listFiles: async (folderPath = '') => {
+    if (!state.rootHandle) return { success: false, error: 'No folder open. Click "Open Folder" first.' };
+    try {
+      const dir = folderPath ? await getDirByPath(folderPath) : state.rootHandle;
+      const entries = [];
+      for await (const [name, handle] of dir.entries()) {
+        entries.push({ name, kind: handle.kind });
+      }
+      return { success: true, entries, folder: folderPath || state.rootHandle.name };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  // ---------- CREATE FILE ----------
+  createFile: async (fileName, folderPath = '') => {
+    if (!state.rootHandle) return { success: false, error: 'No folder open.' };
+    try {
+      const dir = folderPath ? await getDirByPath(folderPath) : state.rootHandle;
+      const fh = await dir.getFileHandle(fileName, { create: true });
+      const w = await fh.createWritable();
+      await w.write('');
+      await w.close();
+      await refreshTree();
+      return { success: true, path: folderPath ? `${folderPath}/${fileName}` : fileName };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  // ---------- CREATE FOLDER ----------
+  createFolder: async (folderName, parentPath = '') => {
+    if (!state.rootHandle) return { success: false, error: 'No folder open.' };
+    try {
+      const dir = parentPath ? await getDirByPath(parentPath) : state.rootHandle;
+      await dir.getDirectoryHandle(folderName, { create: true });
+      await refreshTree();
+      return { success: true, path: parentPath ? `${parentPath}/${folderName}` : folderName };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  // ---------- READ FILE ----------
+  readFile: async (filePath) => {
+    if (!state.rootHandle) return { success: false, error: 'No folder open.' };
+    try {
+      // If already open in tab, return from memory
+      const openTab = state.openTabs.find(t => t.path === filePath || t.name === filePath);
+      if (openTab) return { success: true, content: openTab.content, path: openTab.path };
+
+      const fh = await getFileByPath(filePath);
+      if (!fh) return { success: false, error: 'File not found: ' + filePath };
+      const file = await fh.getFile();
+      const content = await file.text();
+      return { success: true, content, path: filePath };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  // ---------- WRITE FILE ----------
+  writeFile: async (filePath, content) => {
+    if (!state.rootHandle) return { success: false, error: 'No folder open.' };
+    try {
+      // Case A: file already open → update tab + save to disk
+      const openTab = state.openTabs.find(t => t.path === filePath || t.name === filePath);
+      if (openTab) {
+        openTab.content = content;
+        const w = await openTab.handle.createWritable();
+        await w.write(content);
+        await w.close();
+        openTab.originalContent = content;
+        openTab.modified = false;
+        renderTabs();
+        if (state.activeTab && state.activeTab.path === openTab.path) renderEditor();
+        return { success: true, path: openTab.path, savedToDisk: true };
+      }
+
+      // Case B: find by path and write
+      const fh = await getFileByPath(filePath);
+      if (!fh) return { success: false, error: 'File not found: ' + filePath };
+      const w = await fh.createWritable();
+      await w.write(content);
+      await w.close();
+      return { success: true, path: filePath, savedToDisk: true };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  // ---------- OPEN FILE IN EDITOR ----------
+  openFile: async (filePath) => {
+    if (!state.rootHandle) return { success: false, error: 'No folder open.' };
+    try {
+      // Already open?
+      const existing = state.openTabs.find(t => t.path === filePath || t.name === filePath);
+      if (existing) {
+        state.activeTab = existing;
+        renderTabs();
+        renderEditor();
+        return { success: true, path: existing.path, alreadyOpen: true };
+      }
+
+      const fh = await getFileByPath(filePath);
+      if (!fh) return { success: false, error: 'File not found: ' + filePath };
+
+      const name = filePath.split('/').pop();
+      await openFile(fh, filePath, name);
+      return { success: true, path: filePath };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  },
+
+  // ---------- CREATE + WRITE + OPEN (one shot) ----------
+  createAndWrite: async (fileName, content, folderPath = '') => {
+    const createRes = await window.__agentAPI.createFile(fileName, folderPath);
+    if (!createRes.success) return createRes;
+
+    const writeRes = await window.__agentAPI.writeFile(createRes.path, content);
+    if (!writeRes.success) return writeRes;
+
+    const openRes = await window.__agentAPI.openFile(createRes.path);
+    return { success: true, path: createRes.path, opened: openRes.success };
+  },
+
+  // ---------- SAVE ACTIVE FILE ----------
+  saveActive: async () => {
+    if (!state.activeTab) return { success: false, error: 'No active file' };
+    try {
+      await saveActiveFile();
+      return { success: true, path: state.activeTab.path };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  }
+};
+
+// Helper: get dir by relative path
+async function getDirByPath(path) {
+  if (!path || path === '/' || path === state.rootHandle?.name) return state.rootHandle;
+  const parts = path.split('/').filter(Boolean);
+  // Skip root folder name if included
+  if (state.rootHandle && parts[0] === state.rootHandle.name) parts.shift();
+  let cur = state.rootHandle;
+  for (const part of parts) {
+    cur = await cur.getDirectoryHandle(part);
+  }
+  return cur;
+}
+
+// Helper: get file by relative path
+async function getFileByPath(path) {
+  const parts = path.split('/').filter(Boolean);
+  if (state.rootHandle && parts[0] === state.rootHandle.name) parts.shift();
+  const fileName = parts.pop();
+  let dir = state.rootHandle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part);
+  }
+  try {
+    return await dir.getFileHandle(fileName);
+  } catch {
+    return null;
+  }
+}
+
+// Notify extension that API is ready + periodic state sync
+// ⚡ Build tree snapshot (recursive)
+async function buildTreeSnapshot(dirHandle, basePath = '') {
+  if (!dirHandle) return null;
+  const children = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    const childPath = basePath ? `${basePath}/${name}` : name;
+    if (handle.kind === 'directory') {
+      const subChildren = await buildTreeSnapshot(handle, childPath);
+      children.push({
+        name,
+        kind: 'directory',
+        path: childPath,
+        children: subChildren || []
+      });
+    } else {
+      const openTab = state.openTabs.find(t => t.path === childPath);
+      children.push({
+        name,
+        kind: 'file',
+        path: childPath,
+        isOpen: !!openTab,
+        modified: openTab?.modified || false
+      });
+    }
+  }
+  // Sort: folders first, then files
+  children.sort((a, b) => {
+    if (a.kind === 'directory' && b.kind !== 'directory') return -1;
+    if (a.kind !== 'directory' && b.kind === 'directory') return 1;
+    return a.name.localeCompare(b.name);
+  });
+  return children;
+}
+
+// ⚡ Push full state (with tree + file cache)
+async function notifyStateSync() {
+  try {
+    const stateSnap = window.__agentAPI.getState();
+
+    // Build tree (only if folder open)
+    let tree = null;
+    if (state.rootHandle) {
+      tree = await buildTreeSnapshot(state.rootHandle);
+    }
+
+    // Build file cache from open tabs
+    const fileCache = {};
+    state.openTabs.forEach(t => {
+      fileCache[t.path] = t.content;
+    });
+
+    // Push state
+    await fetch('http://localhost:3030/api/state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...stateSnap,
+        tree,
+        fileCache
+      })
+    }).catch(() => {});
+
+    // Push file cache separately (in case server restarted)
+    if (Object.keys(fileCache).length > 0) {
+      for (const [p, c] of Object.entries(fileCache)) {
+        await fetch('http://localhost:3030/api/file-cache', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path: p, content: c })
+        }).catch(() => {});
+      }
+    }
+  } catch (e) {
+    // Silent fail
+  }
+}
+
+// Sync every 5s (was 3s — tree build is heavier)
+setInterval(notifyStateSync, 5000);
+
+// Sync immediately + on key events
+notifyStateSync();
+
+// ============================================================
+//  DOM
+// ============================================================
+const $ = (id) => document.getElementById(id);
+const folderNameEl = $('folderName');
+const treeEl = $('tree');
+const tabsEl = $('tabs');
+const editorAreaEl = $('editorArea');
+const statusDot = $('statusDot');
+const statusText = $('statusText');
+const statusPath = $('statusPath');
+const statusCursor = $('statusCursor');
+const statusLang = $('statusLang');
+const modalOverlay = $('modalOverlay');
+const modalTitle = $('modalTitle');
+const modalInput = $('modalInput');
+const toastEl = $('toast');
+
+// ============================================================
+//  ICON HELPERS
+// ============================================================
+function getExtension(name) {
+  const i = name.lastIndexOf('.');
+  return i === -1 ? '' : name.slice(i + 1).toLowerCase();
+}
+
+function getFileIconInfo(name) {
+  const ext = getExtension(name);
+  const map = {
+    js:   { label: 'JS', cls: 'ext-js' },
+    jsx:  { label: 'JSX', cls: 'ext-js' },
+    ts:   { label: 'TS', cls: 'ext-ts' },
+    tsx:  { label: 'TSX', cls: 'ext-ts' },
+    html: { label: '</>', cls: 'ext-html' },
+    htm:  { label: '</>', cls: 'ext-html' },
+    css:  { label: 'CSS', cls: 'ext-css' },
+    scss: { label: 'SC', cls: 'ext-css' },
+    json: { label: '{}', cls: 'ext-json' },
+    md:   { label: 'MD', cls: 'ext-md' },
+    markdown: { label: 'MD', cls: 'ext-md' },
+    py:   { label: 'PY', cls: 'ext-py' },
+    txt:  { label: 'TXT', cls: 'ext-txt' },
+    log:  { label: 'LOG', cls: 'ext-txt' },
+    sh:   { label: 'SH', cls: 'ext-py' },
+    yml:  { label: 'YML', cls: 'ext-json' },
+    yaml: { label: 'YML', cls: 'ext-json' },
+    xml:  { label: 'XML', cls: 'ext-html' },
+    svg:  { label: 'SVG', cls: 'ext-css' },
+  };
+  const info = map[ext] || { label: ext.slice(0, 3).toUpperCase() || '·', cls: 'ext-other' };
+  return info;
+}
+
+function getLanguage(name) {
+  const ext = getExtension(name);
+  const map = {
+    js: 'JavaScript', jsx: 'JavaScript React',
+    ts: 'TypeScript', tsx: 'TypeScript React',
+    html: 'HTML', htm: 'HTML',
+    css: 'CSS', scss: 'SCSS',
+    json: 'JSON', md: 'Markdown', py: 'Python',
+    txt: 'Plain Text', yml: 'YAML', yaml: 'YAML',
+    xml: 'XML', sh: 'Shell', svg: 'SVG',
+  };
+  return map[ext] || 'Plain Text';
+}
+
+// ============================================================
+//  TOAST + STATUS
+// ============================================================
+let toastTimer = null;
+function toast(msg, type = '') {
+  toastEl.textContent = msg;
+  toastEl.className = 'toast show ' + type;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastEl.className = 'toast'; }, 3000);
+}
+
+function setStatus(msg, type = 'ready') {
+  statusText.textContent = msg;
+  statusDot.className = 'status-dot';
+  if (type === 'active') statusDot.classList.add('active');
+}
+
+// ============================================================
+//  FILE SYSTEM ACCESS API
+// ============================================================
+async function pickFolder() {
+  if (!window.showDirectoryPicker) {
+    toast('File System Access API not supported. Use Chrome/Edge.', 'error');
+    return;
+  }
+  try {
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    state.rootHandle = handle;
+    state.expandedFolders.clear();
+    state.openTabs = [];
+    state.activeTab = null;
+
+    folderNameEl.textContent = handle.name;
+    setStatus(`Opened: ${handle.name}`, 'active');
+    toast(`Folder opened: ${handle.name}`, 'success');
+
+    // Persist handle in IndexedDB
+    await saveHandle(handle);
+
+    await refreshTree();
+    renderTabs();
+    renderEditor();
+    updateToolbarState();
+  } catch (e) {
+    if (e.name !== 'AbortError') {
+      toast('Error opening folder: ' + e.message, 'error');
+    }
+  }
+}
+
+async function restoreHandle() {
+  try {
+    const handle = await loadHandle();
+    if (!handle) return;
+
+    // Check permission
+    const perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      state.rootHandle = handle;
+      folderNameEl.textContent = handle.name;
+      setStatus(`Restored: ${handle.name}`, 'active');
+      await refreshTree();
+      updateToolbarState();
+    } else {
+  state.rootHandle = handle;
+  folderNameEl.textContent = handle.name + ' (needs permission)';
+  setStatus('Click folder to re-authorize', '');
+  treeEl.innerHTML = `<div class="empty-state">
+    <div>🔒</div>
+    <div>Permission needed for <b>${handle.name}</b></div>
+    <button id="reauthBtn">Grant Permission</button>
+  </div>`;
+  document.getElementById('reauthBtn').onclick = async () => {
+    const p = await handle.requestPermission({ mode: 'readwrite' });
+    if (p === 'granted') {
+      state.rootHandle = handle;
+      await refreshTree();
+      updateToolbarState();
+      toast('Permission granted', 'success');
+    }
+  };
+}
+  } catch (e) {
+    console.log('No saved handle:', e.message);
+  }
+}
+
+// IndexedDB persistence
+function idb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('code-explorer', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('handles');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function saveHandle(handle) {
+  const db = await idb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readwrite');
+    tx.objectStore('handles').put(handle, 'root');
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function loadHandle() {
+  const db = await idb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('handles', 'readonly');
+    const req = tx.objectStore('handles').get('root');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// ============================================================
+//  TREE RENDERING
+// ============================================================
+async function refreshTree() {
+  if (!state.rootHandle) return;
+  treeEl.innerHTML = '';
+  await renderDirectory(state.rootHandle, treeEl, 0, '');
+}
+
+async function renderDirectory(dirHandle, container, depth, parentPath) {
+  const entries = [];
+  for await (const [name, handle] of dirHandle.entries()) {
+    entries.push({ name, handle });
+  }
+  entries.sort((a, b) => {
+    // Folders first, then alphabetical
+    const aDir = a.handle.kind === 'directory';
+    const bDir = b.handle.kind === 'directory';
+    if (aDir && !bDir) return -1;
+    if (!aDir && bDir) return 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  for (const { name, handle } of entries) {
+    const path = parentPath ? `${parentPath}/${name}` : name;
+    const node = createNode(name, handle, depth, path);
+    container.appendChild(node);
+
+    if (handle.kind === 'directory' && state.expandedFolders.has(path)) {
+      const childContainer = document.createElement('div');
+      childContainer.className = 'children';
+      node.after(childContainer);
+      await renderDirectory(handle, childContainer, depth + 1, path);
+    }
+  }
+}
+
+function createNode(name, handle, depth, path) {
+  const node = document.createElement('div');
+  node.className = 'node';
+  node.dataset.path = path;
+  node.dataset.kind = handle.kind;
+  node.style.paddingLeft = (depth * 12 + 4) + 'px';
+
+  const isFolder = handle.kind === 'directory';
+  const isExpanded = state.expandedFolders.has(path);
+
+  // Chevron
+  const chevron = document.createElement('span');
+  chevron.className = 'chevron';
+  chevron.textContent = isFolder ? '▶' : '';
+  node.appendChild(chevron);
+
+  if (isExpanded) node.classList.add('expanded');
+
+  // Icon
+  const icon = document.createElement('span');
+  icon.className = 'icon';
+  if (isFolder) {
+    icon.textContent = isExpanded ? '📂' : '📁';
+    icon.classList.add('folder');
+  } else {
+    const info = getFileIconInfo(name);
+    icon.textContent = info.label;
+    icon.classList.add('icon-file', info.cls);
+  }
+  node.appendChild(icon);
+
+  // Label
+  const label = document.createElement('span');
+  label.className = 'label';
+  label.textContent = name;
+  node.appendChild(label);
+
+  // Click handler
+  node.onclick = (e) => {
+    e.stopPropagation();
+    if (isFolder) {
+      if (state.expandedFolders.has(path)) {
+        state.expandedFolders.delete(path);
+      } else {
+        state.expandedFolders.add(path);
+      }
+      refreshTree();
+    } else {
+      openFile(handle, path, name);
+      document.querySelectorAll('.node.selected').forEach(n => n.classList.remove('selected'));
+      node.classList.add('selected');
+    }
+  };
+
+  // Right-click context menu (simple)
+  node.oncontextmenu = (e) => {
+    e.preventDefault();
+    if (handle.kind === 'directory') {
+      state.modalTargetDir = handle;
+      showCreateMenu(e.clientX, e.clientY, handle);
+    }
+  };
+
+  return node;
+}
+
+// Simple context menu
+function showCreateMenu(x, y, dirHandle) {
+  const existing = document.querySelector('.ctx-menu');
+  if (existing) existing.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.style.cssText = `
+    position: fixed; left: ${x}px; top: ${y}px;
+    background: #252526; border: 1px solid #3c3c3c; border-radius: 4px;
+    padding: 4px 0; z-index: 500; min-width: 140px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  `;
+
+  const item = (label, onClick) => {
+    const d = document.createElement('div');
+    d.textContent = label;
+    d.style.cssText = 'padding: 6px 14px; cursor: pointer; font-size: 12px; color: #cccccc;';
+    d.onmouseenter = () => d.style.background = '#094771';
+    d.onmouseleave = () => d.style.background = 'transparent';
+    d.onclick = () => { menu.remove(); onClick(); };
+    menu.appendChild(d);
+  };
+
+  item('📄 New File', () => showModal('newFile', dirHandle));
+  item('📁 New Folder', () => showModal('newFolder', dirHandle));
+
+  document.body.appendChild(menu);
+
+  const close = (e) => {
+    if (!menu.contains(e.target)) {
+      menu.remove();
+      document.removeEventListener('click', close);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', close), 0);
+}
+
+// ============================================================
+//  FILE OPEN / EDIT / SAVE
+// ============================================================
+async function openFile(fileHandle, path, name) {
+  // Check if already open
+  const existing = state.openTabs.find(t => t.path === path);
+  if (existing) {
+    state.activeTab = existing;
+    renderTabs();
+    renderEditor();
+    return;
+  }
+
+  try {
+    const file = await fileHandle.getFile();
+    const content = await file.text();
+
+    state.openTabs.push({
+      path,
+      name,
+      content,
+      originalContent: content,
+      modified: false,
+      handle: fileHandle,
+    });
+    state.activeTab = state.openTabs[state.openTabs.length - 1];
+    renderTabs();
+    renderEditor();
+    toast(`Opened: ${name}`);
+  } catch (e) {
+    toast('Error opening file: ' + e.message, 'error');
+  }
+}
+
+function renderTabs() {
+  tabsEl.innerHTML = '';
+  state.openTabs.forEach(tab => {
+    const el = document.createElement('div');
+    el.className = 'tab';
+    if (state.activeTab && state.activeTab.path === tab.path) el.classList.add('active');
+    if (tab.modified) el.classList.add('modified');
+
+    el.innerHTML = `
+      <span>${tab.name}</span>
+      <span class="modified-dot"></span>
+      <span class="close">✕</span>
+    `;
+
+    el.onclick = (e) => {
+      if (e.target.classList.contains('close')) {
+        closeTab(tab);
+        return;
+      }
+      state.activeTab = tab;
+      renderTabs();
+      renderEditor();
+    };
+
+    tabsEl.appendChild(el);
+  });
+}
+
+function closeTab(tab) {
+  if (tab.modified) {
+    if (!confirm(`"${tab.name}" has unsaved changes. Close anyway?`)) return;
+  }
+  const idx = state.openTabs.indexOf(tab);
+  state.openTabs.splice(idx, 1);
+  if (state.activeTab === tab) {
+    state.activeTab = state.openTabs[idx] || state.openTabs[idx - 1] || null;
+  }
+  renderTabs();
+  renderEditor();
+}
+
+function renderEditor() {
+  editorAreaEl.innerHTML = '';
+
+  if (!state.activeTab) {
+    editorAreaEl.innerHTML = `
+      <div class="welcome" id="welcome">
+        <h2>Code Explorer</h2>
+        <div>Open a folder to browse and edit files</div>
+        <div class="shortcuts">
+          <div><kbd>Ctrl</kbd> + <kbd>S</kbd> — Save file</div>
+          <div><kbd>Ctrl</kbd> + <kbd>N</kbd> — New file</div>
+          <div><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd> — New folder</div>
+        </div>
+      </div>
+    `;
+    statusPath.textContent = '';
+    statusLang.textContent = 'Plain Text';
+    return;
+  }
+
+  const tab = state.activeTab;
+
+  // Line numbers
+  const linesEl = document.createElement('div');
+  linesEl.className = 'line-numbers';
+
+  // Textarea
+  const textarea = document.createElement('textarea');
+  textarea.className = 'code-editor';
+  textarea.value = tab.content;
+  textarea.spellcheck = false;
+
+  const updateLineNumbers = () => {
+    const lineCount = textarea.value.split('\n').length;
+    linesEl.innerHTML = Array.from({ length: lineCount }, (_, i) => i + 1).join('<br>');
+  };
+
+  textarea.addEventListener('input', () => {
+    tab.content = textarea.value;
+    tab.modified = tab.content !== tab.originalContent;
+    updateLineNumbers();
+    updateToolbarState();
+    renderTabs();
+    updateCursor();
+  });
+
+  textarea.addEventListener('scroll', () => {
+    linesEl.scrollTop = textarea.scrollTop;
+  });
+
+  textarea.addEventListener('keyup', updateCursor);
+  textarea.addEventListener('click', updateCursor);
+
+  function updateCursor() {
+    const pos = textarea.selectionStart;
+    const before = textarea.value.substring(0, pos);
+    const lines = before.split('\n');
+    const line = lines.length;
+    const col = lines[lines.length - 1].length + 1;
+    statusCursor.textContent = `Ln ${line}, Col ${col}`;
+  }
+
+  // Tab key insert
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      textarea.value = textarea.value.substring(0, start) + '  ' + textarea.value.substring(end);
+      textarea.selectionStart = textarea.selectionEnd = start + 2;
+      textarea.dispatchEvent(new Event('input'));
+    }
+  });
+
+  editorAreaEl.appendChild(linesEl);
+  editorAreaEl.appendChild(textarea);
+
+  updateLineNumbers();
+  updateCursor();
+
+  statusPath.textContent = tab.path;
+  statusLang.textContent = getLanguage(tab.name);
+
+  // Auto-focus
+  setTimeout(() => textarea.focus(), 50);
+}
+
+async function saveActiveFile() {
+  if (!state.activeTab) return;
+  const tab = state.activeTab;
+  try {
+    const writable = await tab.handle.createWritable();
+    await writable.write(tab.content);
+    await writable.close();
+    tab.originalContent = tab.content;
+    tab.modified = false;
+    renderTabs();
+    updateToolbarState();
+    setStatus(`Saved: ${tab.name}`, 'active');
+    toast(`Saved: ${tab.name}`, 'success');
+    setTimeout(() => setStatus(state.rootHandle ? `Opened: ${state.rootHandle.name}` : 'Ready', 'active'), 2000);
+  } catch (e) {
+    toast('Save failed: ' + e.message, 'error');
+  }
+}
+
+// ============================================================
+//  CREATE FILE / FOLDER
+// ============================================================
+function showModal(mode, targetDir) {
+  state.modalMode = mode;
+  state.modalTargetDir = targetDir || state.rootHandle;
+  if (!state.modalTargetDir) {
+    toast('Open a folder first', 'error');
+    return;
+  }
+  
+  const input = document.getElementById('modalInput');
+  if (mode === 'newFile') {
+    modalTitle.textContent = 'New File';
+    input.value = '';
+    input.placeholder = 'e.g. index.js';
+    input.setAttribute('aria-label', 'new file name input');
+    input.setAttribute('data-agent-id', 'new-file-input');
+  } else {
+    modalTitle.textContent = 'New Folder';
+    input.value = '';
+    input.placeholder = 'e.g. components';
+    input.setAttribute('aria-label', 'new folder name input');
+    input.setAttribute('data-agent-id', 'new-folder-input');
+  }
+  
+  modalOverlay.classList.add('active');
+  setTimeout(() => input.focus(), 50);
+}
+
+
+
+
+function hideModal() {
+  modalOverlay.classList.remove('active');
+  state.modalMode = null;
+  state.modalTargetDir = null;
+}
+
+async function confirmModal() {
+  const name = modalInput.value.trim();
+  if (!name) {
+    toast('Enter a name', 'error');
+    return;
+  }
+  if (/[\\/:*?"<>|]/.test(name)) {
+    toast('Invalid characters in name', 'error');
+    return;
+  }
+
+  try {
+    if (state.modalMode === 'newFile') {
+      const fh = await state.modalTargetDir.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write('');
+      await w.close();
+      toast(`Created file: ${name}`, 'success');
+    } else if (state.modalMode === 'newFolder') {
+      await state.modalTargetDir.getDirectoryHandle(name, { create: true });
+      toast(`Created folder: ${name}`, 'success');
+    }
+    hideModal();
+    await refreshTree();
+  } catch (e) {
+    toast('Create failed: ' + e.message, 'error');
+  }
+}
+
+// ============================================================
+//  TOOLBAR STATE
+// ============================================================
+function updateToolbarState() {
+  const hasFolder = !!state.rootHandle;
+  $('btnNewFile').disabled = !hasFolder;
+  $('btnNewFolder').disabled = !hasFolder;
+  $('btnRefresh').disabled = !hasFolder;
+  $('btnSave').disabled = !state.activeTab || !state.activeTab.modified;
+}
+
+// ============================================================
+//  EVENT BINDINGS
+// ============================================================
+$('btnOpenFolder').onclick = pickFolder;
+$('emptyOpenBtn') && ($('emptyOpenBtn').onclick = pickFolder);
+$('btnNewFile').onclick = () => showModal('newFile', state.rootHandle);
+$('btnNewFolder').onclick = () => showModal('newFolder', state.rootHandle);
+$('btnRefresh').onclick = async () => {
+  await refreshTree();
+  toast('Refreshed');
+};
+$('btnSave').onclick = saveActiveFile;
+$('btnCollapseAll').onclick = () => {
+  state.expandedFolders.clear();
+  refreshTree();
+};
+
+$('modalCancel').onclick = hideModal;
+$('modalConfirm').onclick = confirmModal;
+modalInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') confirmModal();
+  if (e.key === 'Escape') hideModal();
+});
+modalOverlay.addEventListener('click', (e) => {
+  if (e.target === modalOverlay) hideModal();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 's') {
+    e.preventDefault();
+    saveActiveFile();
+  }
+  if (e.ctrlKey && !e.shiftKey && e.key === 'n') {
+    e.preventDefault();
+    if (state.rootHandle) showModal('newFile', state.rootHandle);
+  }
+  if (e.ctrlKey && e.shiftKey && e.key === 'N') {
+    e.preventDefault();
+    if (state.rootHandle) showModal('newFolder', state.rootHandle);
+  }
+});
+
+// Warn on unload if unsaved changes
+window.addEventListener('beforeunload', (e) => {
+  if (state.openTabs.some(t => t.modified)) {
+    e.preventDefault();
+    e.returnValue = '';
+  }
+});
+
+// ============================================================
+//  INIT
+// ============================================================
+(async () => {
+  updateToolbarState();
+  await restoreHandle();
+  setStatus('Ready');
+})();
+
+
+window.__explorerState = state;
+</script>
+
+</body>
+</html>
